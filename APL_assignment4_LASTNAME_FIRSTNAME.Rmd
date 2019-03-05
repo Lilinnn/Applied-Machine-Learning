@@ -1,0 +1,162 @@
+---
+title: "Assignment 4 - Resampling Methods"
+author: "Lilin Jin"
+output: html_notebook
+---
+
+## Exercise 4.1
+
+In this exercise you will use the `glm()` and `predict.glm()` functions, and a `for` loop to compute the LOOCV error for a simple logistic regression model on the `Weekly` data set. 
+
+```{r}
+data("Weekly", package = "ISLR")
+dim(Weekly)
+summary (Weekly)
+```
+
+ (a) Fit a logistic regression model that predicts `Direction` using `Lag1` and `Lag2`.
+ 
+```{r}
+
+attach(Weekly)
+glm.fit <- glm(Direction ~ Lag1 + Lag2, family = "binomial")
+summary(glm.fit)
+
+```
+
+ (b) Fit a logistic regression model that predicts `Direction` using `Lag1` and `Lag2` using *all but the first observation*.
+ 
+```{r}
+
+fit.glm_1 <- glm(Direction ~ Lag1 + Lag2, data = Weekly[-1, ], family = "binomial")
+summary(fit.glm_1)
+
+```
+
+ (c) Use the model from (b) to predict the direction of the first observation. You can do this by predicting that the first observation will go up if `P(Direction="Up"|Lag1, Lag2) > 0.5`. Was this observation correctly classified?
+ 
+```{r}
+# prediction of the first observation
+probs <- predict(fit.glm_1, newdata = Weekly[1, ], type = "response") > 0.5
+probs
+
+# true value of the first observation
+Weekly$Direction[1]
+```
+
+The prediction incorrectly classified the first observation as "up".
+
+ (d) Write a `for` loop from i=1 to i=n, where n is the number of observations in the data set, that performs each of the following steps:
+
+    i. Fit a logistic regression model using all but the i-th observation to predict `Direction` using `Lag1` and `Lag2`.
+    
+    ii. Compute the posterior probability of the market moving up for the i-th observation. 
+    
+    iii. Use the posterior probability for the i-th observation in order to predict whether or not the market moves up. 
+    
+    iv. Determine whether or not an error was made in predicting the direction for the i-th observation. If an error was made, then indicate this as a 1, and otherwise indicate it as a 0.
+    
+```{r}
+# create a dateframe to store the output of the loop
+error <- rep(0, 1089)
+# enter loop
+for(i in 1:1089){
+        fit.glm2 <- glm(Direction ~ Lag1 + Lag2, data = Weekly[-i, ], family = "binomial")
+        probs.up <- predict(fit.glm2, newdata = Weekly[i, ], type = "response") > 0.5
+        true.up <- Weekly[i, ]$Direction == "Up"
+    if (probs.up != true.up ) 
+            error[i] <- 1
+}
+
+error
+```
+
+ (e) Take the average of the n numbers obtained in (d)iv in order to obtain the LOOCV estimate for the test error. Comment on the results.
+ 
+```{r}
+mean(error)
+```
+
+The test error of the LOOCV estimate is 44.995%.
+
+ (f) Compare your results to implementation using `cv.glm` function. 
+
+```{r}
+library(boot)
+# define r - the vector that's the actual outcome, and pi - the vector that's the predicted values
+r <- Weekly$Direction
+pi <- predict(glm.fit, Weekly, type = "response")
+# specify the cost function in cv.glm() so that the estimated value is classified as a 1 or a 0
+mycost <- function(r, pi){
+    weight1 = 1 #cost for getting 1 wrong
+    weight0 = 1 #cost for getting 0 wrong
+    c1 = (r==1)&(pi<0.5) #logical vector - true if actual 1 but predict 0
+    c0 = (r==0)&(pi>=0.5) #logical vector - true if actual 0 but predict 1
+    return(mean(weight1*c1+weight0*c0))
+}
+
+cv.err.LOOCV = cv.glm(Weekly, glm.fit, cost = mycost)$delta
+cv.err.LOOCV
+cv.err.5 = cv.glm(Weekly, glm.fit, cost = mycost, K = 5)$delta
+cv.err.5
+cv.err.10 = cv.glm(Weekly, glm.fit, cost = mycost, K = 10)$delta
+cv.err.10
+
+```
+The results of LOOCV from cv.glm() function is the same as what was obtained from the loop calculation. The eror rate is minimised with the 5-fold cross validation.
+ 
+ (g) Explore any alternative implementations of cross-validation available in userwritten packages (e.g. in `caret`). Implement at least one of them and compare your results with (e) and (f) above.
+
+```{r include=FALSE}
+library(caret)
+# define training control as LOOCV
+train_control <- trainControl(method = "LOOCV")
+# train the model
+model.LOOCV <- train(Direction ~ Lag1 + Lag2, data = Weekly, trControl = train_control, method = "multinom")
+```
+
+```{r}
+# summarize results
+model.LOOCV
+```
+
+The accuracy rate of LOOCV obtained from the caret() package is consistent with the error rate that we get from the loop calculation and the cv.glm() function.
+
+```{r include=FALSE}
+# k-fold Cross Validation, k=10
+train_control_10k <- trainControl(method="cv", number=10)
+# train the model
+model.10k <- train(Direction ~ Lag1 + Lag2, data = Weekly, trControl = train_control_10k, method = "multinom")
+```
+
+```{r}
+# summarize results
+model.10k
+```
+
+```{r include=FALSE}
+## k-fold Cross Validation, k=5
+train_control_5k <- trainControl(method="cv", number=5)
+# train the model
+model.5k <- train(Direction ~ Lag1 + Lag2, data = Weekly, trControl = train_control_5k, method = "multinom")
+```
+
+```{r}
+# summarize results
+model.5k
+```
+
+The results of the 5-fold and 10-fold cross validation here is a bit different from the cv.glm() function. The accuracy rate is maximized with the 10-fold cross validation.
+
+```{r include=FALSE}
+# bootstrap
+train_control_boot <- trainControl(method="boot", number=100)
+# train the model
+model.boot <- train(Direction ~ Lag1 + Lag2, data = Weekly, trControl=train_control_boot, method="multinom")
+
+```
+
+```{r}
+# summarize results
+model.boot
+```
